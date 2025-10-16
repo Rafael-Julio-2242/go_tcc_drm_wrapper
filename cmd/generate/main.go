@@ -11,23 +11,21 @@ import (
 // test app name test_game.x86_64
 
 func main() {
-	if len(os.Args) != 5 {
-		fmt.Println("Usage: go run main.go <mintId> <ownerAddress> <applicationPath> <execName>")
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: go run main.go <mintId> <applicationPath> <execName>")
 		os.Exit(1)
 	}
 
 	mintId := os.Args[1]
-	ownerAddress := os.Args[2]
-	applicationPath := os.Args[3]
-	execName := os.Args[4]
+	applicationPath := os.Args[2]
+	execName := os.Args[3]
 
 	wrapperBuilder := wrappertemplate.NewWrapperTemplateBuilder()
 	wrapperBuilder.SetMintId(mintId)
-	wrapperBuilder.SetOwnerAddress(ownerAddress)
 
 	appBuilder := applicationbuilder.New()
 	appBuilder.SetExecName(execName)
-	appBuilder.SetOutputPath("/home/rafa/Documentos/GitHub/go_tcc_drm_wrapper/output")
+	appBuilder.SetOutputPath(".")
 	appBuilder.SetZipPath(applicationPath)
 	appBuilder.SetWrapperBuilder(wrapperBuilder)
 

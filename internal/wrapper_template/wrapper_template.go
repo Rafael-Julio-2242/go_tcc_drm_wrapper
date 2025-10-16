@@ -110,7 +110,7 @@ func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
 
 	}
 
-	`, w.applicationName, w.mintId, w.ownerAddress, w.applicationName)
+	`, w.applicationPath, w.mintId, w.ownerAddress, w.applicationName)
 
 	return template, nil
 }

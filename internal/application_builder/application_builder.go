@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 type ApplicationBuilder struct {
@@ -60,6 +61,16 @@ func (a *ApplicationBuilder) unzip() error {
 	for _, f := range zr.File {
 		targetPath := outputDirPath + "/" + f.Name
 
+		if f.Name == a.execName {
+
+			if strings.HasSuffix(f.Name, ".exe") {
+				targetPath = outputDirPath + "/" + strings.TrimSuffix(f.Name, ".exe") + "_unwrapped.exe"
+			} else {
+				targetPath = outputDirPath + "/" + f.Name + "_unwrapped"
+			}
+
+		}
+
 		outFile, err := os.Create(targetPath)
 
 		if err != nil {
@@ -111,8 +122,16 @@ func (a *ApplicationBuilder) BuildApplication() error {
 
 	fmt.Println("Building wrapper...")
 
+	var unwrappedApplicationName string
+
+	if strings.HasSuffix(a.execName, ".exe") {
+		unwrappedApplicationName = strings.TrimSuffix(a.execName, ".exe") + "_unwrapped.exe"
+	} else {
+		unwrappedApplicationName = a.execName + "_unwrapped"
+	}
+
 	folderPath := a.outputPath + "/" + a.execName + "_folder"
-	a.wrapperBuilder.SetApplicationPath(a.execName)
+	a.wrapperBuilder.SetApplicationPath(unwrappedApplicationName)
 	a.wrapperBuilder.SetApplicationName(a.execName)
 
 	wrapper, err := a.wrapperBuilder.BuildTemplate()
@@ -141,7 +160,7 @@ func (a *ApplicationBuilder) BuildApplication() error {
 
 	fmt.Println("Wrapper saved!")
 
-	cmd := exec.Command("go", "build", "-o", folderPath+"/"+a.execName+"_wrapped", folderPath+"/wrapper.go")
+	cmd := exec.Command("go", "build", "-o", folderPath+"/"+a.execName, folderPath+"/wrapper.go")
 
 	if err := cmd.Run(); err != nil {
 		return errors.New("error building wrapper: " + err.Error())
@@ -149,9 +168,7 @@ func (a *ApplicationBuilder) BuildApplication() error {
 
 	fmt.Println("Application Wrapped!")
 
-	// Agora é apagar o arquivo original
-
-	os.Remove(a.outputPath + "/" + a.execName + "_folder/" + a.execName)
+	os.Remove(a.outputPath + "/" + a.execName + "_folder/" + unwrappedApplicationName)
 
 	return nil
 }
