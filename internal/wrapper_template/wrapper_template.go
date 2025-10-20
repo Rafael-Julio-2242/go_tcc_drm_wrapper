@@ -7,7 +7,6 @@ import (
 
 type WrapperTemplateBuilder struct {
 	mintId          string
-	ownerAddress    string
 	applicationPath string
 	applicationName string
 }
@@ -20,10 +19,6 @@ func (w *WrapperTemplateBuilder) SetMintId(mintId string) {
 	w.mintId = mintId
 }
 
-func (w *WrapperTemplateBuilder) SetOwnerAddress(ownerAddress string) {
-	w.ownerAddress = ownerAddress
-}
-
 func (w *WrapperTemplateBuilder) SetApplicationPath(applicationPath string) {
 	w.applicationPath = applicationPath
 }
@@ -33,8 +28,8 @@ func (w *WrapperTemplateBuilder) SetApplicationName(applicationName string) {
 }
 
 func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
-	if w.mintId == "" || w.ownerAddress == "" || w.applicationPath == "" {
-		return "", errors.New("mintId or ownerAddress or applicationPath is empty")
+	if w.mintId == "" || w.applicationPath == "" {
+		return "", errors.New("mintId or applicationPath is empty")
 	}
 
 	template := fmt.Sprintf(`
@@ -52,7 +47,6 @@ func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
 	var executavel []byte
 
 	const MINT_ID = "%v"
-	const OWNER_ADDRESS = "%v"
 	const PASSWORD = "123456"
 	const EXECUTABLE_NAME = "%v"
 
@@ -110,7 +104,7 @@ func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
 
 	}
 
-	`, w.applicationPath, w.mintId, w.ownerAddress, w.applicationName)
+	`, w.applicationPath, w.mintId, w.applicationName)
 
 	return template, nil
 }

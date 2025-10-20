@@ -52,6 +52,12 @@ func (a *ApplicationBuilder) unzip() error {
 
 	outputDirPath := a.outputPath + "/" + a.execName + "_folder"
 
+	err = os.RemoveAll(outputDirPath)
+
+	if err != nil {
+		return errors.New("error removing directory: " + err.Error())
+	}
+
 	err = os.Mkdir(outputDirPath, 0755)
 
 	if err != nil {
@@ -150,13 +156,13 @@ func (a *ApplicationBuilder) BuildApplication() error {
 		return errors.New("error creating wrappers file: " + err.Error())
 	}
 
-	defer wrapperFile.Close()
-
 	_, err = wrapperFile.WriteString(wrapper)
 
 	if err != nil {
 		return errors.New("error writing wrappers file: " + err.Error())
 	}
+
+	defer wrapperFile.Close()
 
 	fmt.Println("Wrapper saved!")
 
@@ -169,6 +175,11 @@ func (a *ApplicationBuilder) BuildApplication() error {
 	fmt.Println("Application Wrapped!")
 
 	os.Remove(a.outputPath + "/" + a.execName + "_folder/" + unwrappedApplicationName)
+	// Remover o wrapper agora
+
+	wrapperFile.Close()
+
+	// os.Remove(folderPath + "/wrapper.go")
 
 	return nil
 }
