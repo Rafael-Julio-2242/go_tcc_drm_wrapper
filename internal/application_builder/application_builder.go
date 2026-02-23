@@ -2,6 +2,9 @@ package applicationbuilder
 
 import (
 	"archive/zip"
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	wrappertemplate "go_tcc_drm_wrapper/internal/wrapper_template"
@@ -10,6 +13,13 @@ import (
 	"os/exec"
 	"strings"
 )
+
+const METADATA_SIZE = 40 // Exemplo: 32 bytes (hash) + 8 bytes (uint64)
+
+type Metadata struct {
+	Hash             [32]byte
+	SizeOfPureBinary uint64
+}
 
 type ApplicationBuilder struct {
 	zipPath        string
@@ -102,6 +112,38 @@ func (a *ApplicationBuilder) unzip() error {
 	return nil
 }
 
+func (a *ApplicationBuilder) inputHash(binaryPath string) error {
+	binaryFile, errOpeningFile := os.Open(binaryPath)
+
+	if errOpeningFile != nil {
+		return errors.New("error opening file to input hash validation")
+	}
+
+	hasher := sha256.New()
+	io.Copy(hasher, binaryFile)
+	referenceHash := hasher.Sum(nil)
+
+	fileInfo, errStatFile := binaryFile.Stat()
+
+	if errStatFile != nil {
+		return errors.New("error getting file status")
+	}
+
+	sizeOfBinary := fileInfo.Size()
+
+	var metadata Metadata
+	copy(metadata.Hash[:], referenceHash)
+	metadata.SizeOfPureBinary = uint64(sizeOfBinary)
+
+	var metadataBytes bytes.Buffer
+	binary.Write(&metadataBytes, binary.LittleEndian, metadata)
+
+	finalFile, _ := os.OpenFile(binaryPath, os.O_APPEND|os.O_WRONLY, 0644)
+	finalFile.Write(metadataBytes.Bytes())
+
+	return nil
+}
+
 func (a *ApplicationBuilder) BuildApplication() error {
 
 	if a.zipPath == "" || a.execName == "" || a.outputPath == "" || a.wrapperBuilder == nil {
@@ -174,12 +216,19 @@ func (a *ApplicationBuilder) BuildApplication() error {
 
 	fmt.Println("Application Wrapped!")
 
-	os.Remove(a.outputPath + "/" + a.execName + "_folder/" + unwrappedApplicationName)
+	binaryPath := a.outputPath + "/" + a.execName + "_folder/" + a.execName
+	errInputingHash := a.inputHash(binaryPath)
+
+	if errInputingHash != nil {
+		return errInputingHash
+	}
+
+	// os.Remove(a.outputPath + "/" + a.execName + "_folder/" + unwrappedApplicationName)
 	// Remover o wrapper agora
 
 	wrapperFile.Close()
 
-	// os.Remove(folderPath + "/wrapper.go")
+	os.Remove(folderPath + "/wrapper.go")
 
 	return nil
 }
