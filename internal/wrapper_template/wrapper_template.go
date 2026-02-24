@@ -6,7 +6,7 @@ import (
 )
 
 type WrapperTemplateBuilder struct {
-	mintId          string
+	contractId      string
 	chain           string
 	applicationPath string
 	applicationName string
@@ -16,8 +16,8 @@ func NewWrapperTemplateBuilder() *WrapperTemplateBuilder {
 	return &WrapperTemplateBuilder{}
 }
 
-func (w *WrapperTemplateBuilder) SetMintId(mintId string) {
-	w.mintId = mintId
+func (w *WrapperTemplateBuilder) SetContractId(contractId string) {
+	w.contractId = contractId
 }
 
 func (w *WrapperTemplateBuilder) SetChain(chain string) {
@@ -33,8 +33,8 @@ func (w *WrapperTemplateBuilder) SetApplicationName(applicationName string) {
 }
 
 func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
-	if w.mintId == "" || w.applicationPath == "" {
-		return "", errors.New("mintId or applicationPath is empty")
+	if w.contractId == "" || w.applicationPath == "" {
+		return "", errors.New("contractId or applicationPath is empty")
 	}
 
 	functions := ""
@@ -84,7 +84,7 @@ func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
 	functions += "	reqBody := RpcReqBody{\n"
 	functions += "		Jsonrpc: \"2.0\",\n"
 	functions += "		Method:  METHOD_NAME,\n"
-	functions += "		Params:  []string{MINT_ID, CHAIN},\n"
+	functions += "		Params:  []string{CONTRACT_ID, CHAIN},\n"
 	functions += "		Id:      requestId,\n"
 	functions += "	}\n"
 
@@ -238,7 +238,7 @@ func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
 	//go:embed %v
 	var executavel []byte
 
-	const MINT_ID = "%v"
+	const CONTRACT_ID = "%v"
 	const CHAIN = "%v"
 	const EXECUTABLE_NAME = "%v"
 
@@ -251,7 +251,7 @@ func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
 
 		%s
 
-	`, w.applicationPath, w.mintId, w.chain, w.applicationName, functions)
+	`, w.applicationPath, w.contractId, w.chain, w.applicationName, functions)
 
 	return template, nil
 }

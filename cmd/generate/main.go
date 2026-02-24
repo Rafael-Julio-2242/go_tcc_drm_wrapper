@@ -12,17 +12,17 @@ import (
 
 func main() {
 	if len(os.Args) < 5 {
-		fmt.Println("Usage: go run main.go <mintId> <applicationPath> <execName> <chain>")
+		fmt.Println("Usage: go run main.go <contractId> <applicationPath> <execName> <chain>")
 		os.Exit(1)
 	}
 
-	mintId := os.Args[1]
+	contractId := os.Args[1]
 	applicationPath := os.Args[2]
 	execName := os.Args[3]
 	chain := os.Args[4]
 
 	wrapperBuilder := wrappertemplate.NewWrapperTemplateBuilder()
-	wrapperBuilder.SetMintId(mintId)
+	wrapperBuilder.SetContractId(contractId)
 	wrapperBuilder.SetChain(chain)
 
 	appBuilder := applicationbuilder.New()
