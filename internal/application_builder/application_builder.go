@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,10 +23,11 @@ type Metadata struct {
 }
 
 type ApplicationBuilder struct {
-	zipPath        string
-	execName       string
-	outputPath     string
-	wrapperBuilder *wrappertemplate.WrapperTemplateBuilder
+	zipPath          string
+	execName         string
+	outputPath       string
+	wrapperBuilder   *wrappertemplate.WrapperTemplateBuilder
+	OutputFolderPath string
 }
 
 func New() *ApplicationBuilder {
@@ -179,6 +181,10 @@ func (a *ApplicationBuilder) BuildApplication() error {
 	}
 
 	folderPath := a.outputPath + "/" + a.execName + "_folder"
+	a.OutputFolderPath = folderPath
+
+	println("folderPath: ", folderPath)
+
 	a.wrapperBuilder.SetApplicationPath(unwrappedApplicationName)
 	a.wrapperBuilder.SetApplicationName(a.execName)
 
@@ -223,12 +229,66 @@ func (a *ApplicationBuilder) BuildApplication() error {
 		return errInputingHash
 	}
 
-	// os.Remove(a.outputPath + "/" + a.execName + "_folder/" + unwrappedApplicationName)
-	// Remover o wrapper agora
+	os.Remove(a.outputPath + "/" + a.execName + "_folder/" + unwrappedApplicationName)
 
 	wrapperFile.Close()
 
 	os.Remove(folderPath + "/wrapper.go")
+
+	// Pegar o nome do arquivo sem o ".exe"
+
+	var execNameWithoutExtension string
+	if strings.HasSuffix(a.execName, ".exe") {
+		execNameWithoutExtension = strings.TrimSuffix(a.execName, ".exe")
+	} else {
+		execNameWithoutExtension = a.execName
+	}
+
+	// Preciso compactar tudo de novo
+	zipFile, err := os.Create(a.outputPath + "/" + execNameWithoutExtension + ".zip")
+	if err != nil {
+		return err
+	}
+	defer zipFile.Close()
+
+	// 2. Cria o writer para o zip
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
+	filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Evita incluir a própria pasta raiz no nome interno
+		relPath, err := filepath.Rel(folderPath, path)
+		if err != nil {
+			return err
+		}
+
+		// Se for diretório, apenas garante a estrutura (sem conteúdo)
+		if info.IsDir() {
+			_, err = zipWriter.Create(relPath + "/")
+			return err
+		}
+
+		// 4. Abre arquivo para adicionar ao zip
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		// Cria entrada no zip com o caminho relativo
+		entry, err := zipWriter.Create(relPath)
+		if err != nil {
+			return err
+		}
+
+		// Copia os bytes do arquivo para o zip
+		_, err = io.Copy(entry, file)
+		return err
+	})
 
 	return nil
 }

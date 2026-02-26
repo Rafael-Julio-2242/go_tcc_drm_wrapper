@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,6 +26,8 @@ func main() {
 	router.GET("/", func(c *gin.Context) {
 		c.String(200, "Hello World")
 	})
+
+	router.POST("/wrap", WrapperHandler)
 
 	router.Run(":8080")
 }
@@ -102,7 +105,7 @@ func WrapperHandler(c *gin.Context) {
 	wrapperBuilder.SetChain(chain)
 
 	appBuilder := applicationbuilder.New()
-	appBuilder.SetOutputPath("/c/Users/OPYT/Documents/GitHub/projetos/go_tcc_drm_wrapper/output")
+	appBuilder.SetOutputPath(OUTPUT_DIR)
 	appBuilder.SetExecName(execPath)
 	appBuilder.SetZipPath(zipInputPath)
 	appBuilder.SetWrapperBuilder(wrapperBuilder)
@@ -115,10 +118,42 @@ func WrapperHandler(c *gin.Context) {
 		return
 	}
 
-	// TODO agora, aqui eu preciso carregar o arquivo com o Wrapper
-	// apagar o arquivo de input temporário
-	// Devolver o arquivo para o usuário
-	// E limpar a pasta de output
+	absOutputDir, err := filepath.Abs(OUTPUT_DIR)
+	if err != nil {
+		panic(err)
+	}
+
+	var execNameWithoutExtension string
+	if strings.HasSuffix(execPath, ".exe") {
+		execNameWithoutExtension = strings.TrimSuffix(execPath, ".exe")
+	} else {
+		execNameWithoutExtension = execPath
+	}
+
+	zipFilePath := absOutputDir + "/" + execNameWithoutExtension + ".zip"
+
+	zipFile, err := os.Open(zipFilePath)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error opening file: %s", err.Error())
+		return
+	}
+
+	defer zipFile.Close()
+
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", "attachment; filename="+execNameWithoutExtension+".zip")
+
+	_, err = io.Copy(c.Writer, zipFile)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error sending file: %s", err.Error())
+		return
+	}
+
+	err = os.RemoveAll(OUTPUT_DIR)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error removing directory: %s", err.Error())
+		return
+	}
 
 }
 
