@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	applicationbuilder "go_tcc_drm_wrapper/internal/application_builder"
 	wrappertemplate "go_tcc_drm_wrapper/internal/wrapper_template"
 	"io"
@@ -130,30 +131,49 @@ func WrapperHandler(c *gin.Context) {
 		execNameWithoutExtension = execPath
 	}
 
-	zipFilePath := absOutputDir + "/" + execNameWithoutExtension + ".zip"
+	zipFilePath := absOutputDir + "\\" + execNameWithoutExtension + ".zip"
+	println("ZIP FILE PATH: ", zipFilePath)
+
+	if _, err := os.Stat(zipFilePath); os.IsNotExist(err) {
+		c.String(http.StatusNotFound, "File not found")
+		return
+	}
 
 	zipFile, err := os.Open(zipFilePath)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error opening file: %s", err.Error())
 		return
 	}
-
 	defer zipFile.Close()
+
+	zipFileInfo, err := zipFile.Stat()
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error getting file info: %s", err.Error())
+		return
+	}
+
+	// Vou tentar retornar os bytes do arquivo.
+	buffer := make([]byte, zipFileInfo.Size())
+	_, err = zipFile.Read(buffer)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error reading file: %s", err.Error())
+		return
+	}
+
+	println("Setting Headers...")
 
 	c.Header("Content-Type", "application/zip")
 	c.Header("Content-Disposition", "attachment; filename="+execNameWithoutExtension+".zip")
+	c.Header("Content-Size", fmt.Sprintf("%d", len(buffer)))
 
-	_, err = io.Copy(c.Writer, zipFile)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error sending file: %s", err.Error())
-		return
-	}
+	fmt.Printf("Sending %d bytes\n", len(buffer))
 
-	err = os.RemoveAll(OUTPUT_DIR)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error removing directory: %s", err.Error())
-		return
-	}
+	c.Data(http.StatusOK, "application/zip", buffer)
+
+	// err = os.RemoveAll(OUTPUT_DIR)
+	// if err != nil {
+	// 	println("Error removing directory: ", err.Error())
+	// }
 
 }
 
