@@ -55,14 +55,25 @@ func (a *ApplicationBuilder) unzip() error {
 		return errors.New("zipPath, execName or outputPath is empty")
 	}
 
+	println("Opening reader")
+
 	zr, err := zip.OpenReader(a.zipPath)
+
+	println("Reader opened")
 
 	if err != nil {
 		return errors.New("error opening zip file: " + err.Error())
 	}
 	defer zr.Close()
 
-	outputDirPath := a.outputPath + "/" + a.execName + "_folder"
+	absolutePath, err := filepath.Abs(a.outputPath)
+	if err != nil {
+		return errors.New("error getting absolute path: " + err.Error())
+	}
+
+	outputDirPath := absolutePath + "\\" + a.execName + "_folder"
+
+	println("Removing directory")
 
 	err = os.RemoveAll(outputDirPath)
 
@@ -70,78 +81,110 @@ func (a *ApplicationBuilder) unzip() error {
 		return errors.New("error removing directory: " + err.Error())
 	}
 
+	println("Creating directory")
+
+	println("Output directory path: ", outputDirPath)
+
 	err = os.Mkdir(outputDirPath, 0755)
 
 	if err != nil {
 		return errors.New("error creating directory: " + err.Error())
 	}
 
+	println("Unzipping files")
+
 	for _, f := range zr.File {
-		targetPath := outputDirPath + "/" + f.Name
+		path := filepath.Join(outputDirPath, f.Name)
 
 		if f.Name == a.execName {
-
 			if strings.HasSuffix(f.Name, ".exe") {
-				targetPath = outputDirPath + "/" + strings.TrimSuffix(f.Name, ".exe") + "_unwrapped.exe"
+				path = filepath.Join(outputDirPath, strings.TrimSuffix(f.Name, ".exe")+"_unwrapped.exe")
 			} else {
-				targetPath = outputDirPath + "/" + f.Name + "_unwrapped"
+				path = filepath.Join(outputDirPath, f.Name+"_unwrapped")
 			}
-
 		}
 
-		outFile, err := os.Create(targetPath)
+		println("Unzipping file: ", f.Name)
 
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(path, os.ModePerm)
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
+			return err
+		}
+
+		outFile, err := os.Create(path)
 		if err != nil {
 			return errors.New("error creating file: " + err.Error())
 		}
-		defer outFile.Close()
 
 		inFile, err := f.Open()
-
 		if err != nil {
-			return errors.New("error opening file: " + err.Error())
+			outFile.Close()
+			return errors.New("error opening file from zip: " + err.Error())
 		}
-		defer inFile.Close()
 
+		println("File opened, copying...")
 		_, err = io.Copy(outFile, inFile)
+
+		inFile.Close()
+		outFile.Close()
 
 		if err != nil {
 			return errors.New("error copying file: " + err.Error())
 		}
-
 	}
+
+	println("Files unzipped")
 
 	return nil
 }
 
 func (a *ApplicationBuilder) inputHash(binaryPath string) error {
 	binaryFile, errOpeningFile := os.Open(binaryPath)
-
 	if errOpeningFile != nil {
-		return errors.New("error opening file to input hash validation")
+		return errors.New("error opening file to input hash validation: " + errOpeningFile.Error())
 	}
 
 	hasher := sha256.New()
-	io.Copy(hasher, binaryFile)
+	_, err := io.Copy(hasher, binaryFile)
+	if err != nil {
+		binaryFile.Close()
+		return errors.New("error calculating hash: " + err.Error())
+	}
 	referenceHash := hasher.Sum(nil)
 
 	fileInfo, errStatFile := binaryFile.Stat()
-
 	if errStatFile != nil {
-		return errors.New("error getting file status")
+		binaryFile.Close()
+		return errors.New("error getting file status: " + errStatFile.Error())
 	}
 
 	sizeOfBinary := fileInfo.Size()
+	binaryFile.Close()
 
 	var metadata Metadata
 	copy(metadata.Hash[:], referenceHash)
 	metadata.SizeOfPureBinary = uint64(sizeOfBinary)
 
 	var metadataBytes bytes.Buffer
-	binary.Write(&metadataBytes, binary.LittleEndian, metadata)
+	err = binary.Write(&metadataBytes, binary.LittleEndian, metadata)
+	if err != nil {
+		return errors.New("error writing metadata to buffer: " + err.Error())
+	}
 
-	finalFile, _ := os.OpenFile(binaryPath, os.O_APPEND|os.O_WRONLY, 0644)
-	finalFile.Write(metadataBytes.Bytes())
+	finalFile, err := os.OpenFile(binaryPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return errors.New("error opening file for appending metadata: " + err.Error())
+	}
+	defer finalFile.Close()
+
+	_, err = finalFile.Write(metadataBytes.Bytes())
+	if err != nil {
+		return errors.New("error writing metadata to file: " + err.Error())
+	}
 
 	return nil
 }
@@ -180,7 +223,13 @@ func (a *ApplicationBuilder) BuildApplication() error {
 		unwrappedApplicationName = a.execName + "_unwrapped"
 	}
 
-	folderPath := a.outputPath + "/" + a.execName + "_folder"
+	// Pegar o caminho absoluto pra criar o arquivo
+	absolutePath, err := filepath.Abs(a.outputPath)
+	if err != nil {
+		return errors.New("error getting absolute path: " + err.Error())
+	}
+
+	folderPath := absolutePath + "\\" + a.execName + "_folder"
 	a.OutputFolderPath = folderPath
 
 	println("folderPath: ", folderPath)
@@ -198,23 +247,21 @@ func (a *ApplicationBuilder) BuildApplication() error {
 
 	fmt.Println("Saving wrapper...")
 
-	wrapperFile, err := os.Create(folderPath + "/" + "wrapper.go")
-
+	wrapperFile, err := os.Create(filepath.Join(folderPath, "wrapper.go"))
 	if err != nil {
 		return errors.New("error creating wrappers file: " + err.Error())
 	}
 
 	_, err = wrapperFile.WriteString(wrapper)
-
 	if err != nil {
+		wrapperFile.Close()
 		return errors.New("error writing wrappers file: " + err.Error())
 	}
-
-	defer wrapperFile.Close()
+	wrapperFile.Close()
 
 	fmt.Println("Wrapper saved!")
 
-	cmd := exec.Command("go", "build", "-o", folderPath+"/"+a.execName, folderPath+"/wrapper.go")
+	cmd := exec.Command("go", "build", "-o", filepath.Join(folderPath, a.execName), filepath.Join(folderPath, "wrapper.go"))
 
 	if err := cmd.Run(); err != nil {
 		return errors.New("error building wrapper: " + err.Error())
@@ -222,18 +269,14 @@ func (a *ApplicationBuilder) BuildApplication() error {
 
 	fmt.Println("Application Wrapped!")
 
-	binaryPath := a.outputPath + "/" + a.execName + "_folder/" + a.execName
+	binaryPath := filepath.Join(folderPath, a.execName)
 	errInputingHash := a.inputHash(binaryPath)
-
 	if errInputingHash != nil {
 		return errInputingHash
 	}
 
-	os.Remove(a.outputPath + "/" + a.execName + "_folder/" + unwrappedApplicationName)
-
-	wrapperFile.Close()
-
-	os.Remove(folderPath + "/wrapper.go")
+	os.Remove(filepath.Join(folderPath, unwrappedApplicationName))
+	os.Remove(filepath.Join(folderPath, "wrapper.go"))
 
 	// Pegar o nome do arquivo sem o ".exe"
 
@@ -245,17 +288,16 @@ func (a *ApplicationBuilder) BuildApplication() error {
 	}
 
 	// Preciso compactar tudo de novo
-	zipFile, err := os.Create(a.outputPath + "/" + execNameWithoutExtension + ".zip")
+	zipOutPath := filepath.Join(a.outputPath, execNameWithoutExtension+".zip")
+	zipFile, err := os.Create(zipOutPath)
 	if err != nil {
 		return err
 	}
-	defer zipFile.Close()
 
 	// 2. Cria o writer para o zip
 	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
 
-	filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -264,6 +306,11 @@ func (a *ApplicationBuilder) BuildApplication() error {
 		relPath, err := filepath.Rel(folderPath, path)
 		if err != nil {
 			return err
+		}
+
+		// Ignora o diretório raiz
+		if relPath == "." {
+			return nil
 		}
 
 		// Se for diretório, apenas garante a estrutura (sem conteúdo)
@@ -290,5 +337,17 @@ func (a *ApplicationBuilder) BuildApplication() error {
 		return err
 	})
 
-	return nil
+	if err != nil {
+		zipWriter.Close()
+		zipFile.Close()
+		return err
+	}
+
+	err = zipWriter.Close()
+	if err != nil {
+		zipFile.Close()
+		return err
+	}
+
+	return zipFile.Close()
 }

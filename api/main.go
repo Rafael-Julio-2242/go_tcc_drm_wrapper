@@ -10,12 +10,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const INPUT_DIR = "application_input"
 const OUTPUT_DIR = "application_output"
+
+var (
+	downloadMap = make(map[string]string)
+	mapMutex    sync.Mutex
+)
 
 func main() {
 
@@ -29,6 +36,7 @@ func main() {
 	})
 
 	router.POST("/wrap", WrapperHandler)
+	router.GET("/download/:id", DownloadHandler)
 
 	router.Run(":8080")
 }
@@ -113,6 +121,7 @@ func WrapperHandler(c *gin.Context) {
 
 	err = appBuilder.BuildApplication()
 	if err != nil {
+		println("Error building application: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Error building application",
 		})
@@ -131,7 +140,7 @@ func WrapperHandler(c *gin.Context) {
 		execNameWithoutExtension = execPath
 	}
 
-	zipFilePath := absOutputDir + "\\" + execNameWithoutExtension + ".zip"
+	zipFilePath := filepath.Join(absOutputDir, execNameWithoutExtension+".zip")
 	println("ZIP FILE PATH: ", zipFilePath)
 
 	if _, err := os.Stat(zipFilePath); os.IsNotExist(err) {
@@ -139,42 +148,69 @@ func WrapperHandler(c *gin.Context) {
 		return
 	}
 
-	zipFile, err := os.Open(zipFilePath)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error opening file: %s", err.Error())
-		return
-	}
-	defer zipFile.Close()
+	// zipFile, err := os.Open(zipFilePath)
+	// if err != nil {
+	// 	c.String(http.StatusInternalServerError, "Error opening file: %s", err.Error())
+	// 	return
+	// }
+	// defer zipFile.Close()
 
-	zipFileInfo, err := zipFile.Stat()
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error getting file info: %s", err.Error())
-		return
-	}
+	// zipFileInfo, err := zipFile.Stat()
+	// if err != nil {
+	// 	c.String(http.StatusInternalServerError, "Error getting file info: %s", err.Error())
+	// 	return
+	// }
 
-	// Vou tentar retornar os bytes do arquivo.
-	buffer := make([]byte, zipFileInfo.Size())
-	_, err = zipFile.Read(buffer)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error reading file: %s", err.Error())
-		return
-	}
+	// // Vou tentar retornar os bytes do arquivo.
+	// buffer := make([]byte, zipFileInfo.Size())
+	// _, err = zipFile.Read(buffer)
+	// if err != nil {
+	// 	c.String(http.StatusInternalServerError, "Error reading file: %s", err.Error())
+	// 	return
+	// }
 
 	println("Setting Headers...")
 
+	// Em vez de enviar o arquivo diretamente, vamos salvar o path e devolver um UUID
+	fileID := uuid.New().String()
+
+	mapMutex.Lock()
+	downloadMap[fileID] = zipFilePath
+	mapMutex.Unlock()
+
+	downloadURL := fmt.Sprintf("/download/%s", fileID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "Application wrapped successfully",
+		"download_url": downloadURL,
+	})
+}
+
+func DownloadHandler(c *gin.Context) {
+	id := c.Param("id")
+
+	mapMutex.Lock()
+	filePath, exists := downloadMap[id]
+	mapMutex.Unlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "File not found or expired",
+		})
+		return
+	}
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Physical file not found",
+		})
+		return
+	}
+
+	fileName := filepath.Base(filePath)
 	c.Header("Content-Type", "application/zip")
-	c.Header("Content-Disposition", "attachment; filename="+execNameWithoutExtension+".zip")
-	c.Header("Content-Size", fmt.Sprintf("%d", len(buffer)))
-
-	fmt.Printf("Sending %d bytes\n", len(buffer))
-
-	c.Data(http.StatusOK, "application/zip", buffer)
-
-	// err = os.RemoveAll(OUTPUT_DIR)
-	// if err != nil {
-	// 	println("Error removing directory: ", err.Error())
-	// }
-
+	c.Header("Content-Disposition", "attachment; filename="+fileName)
+	c.File(filePath)
 }
 
 func isFileZip(data []byte) bool {
