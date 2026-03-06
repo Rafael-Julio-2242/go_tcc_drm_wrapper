@@ -49,7 +49,8 @@ func WrapperHandler(c *gin.Context) {
 
 	if contractId == "" || chain == "" || execPath == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing parameters",
+			"message": "Missing parameters",
+			"success": false,
 		})
 		return
 	}
@@ -57,7 +58,8 @@ func WrapperHandler(c *gin.Context) {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing file",
+			"message": "Missing file",
+			"success": false,
 		})
 		return
 	}
@@ -65,7 +67,8 @@ func WrapperHandler(c *gin.Context) {
 	file, err := fileHeader.Open()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Error opening file",
+			"message": "Error opening file",
+			"success": false,
 		})
 		return
 	}
@@ -75,7 +78,8 @@ func WrapperHandler(c *gin.Context) {
 	_, err = file.Read(buf)
 	if err != nil && err != io.EOF {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Error reading file",
+			"message": "Error reading file",
+			"success": false,
 		})
 		return
 	}
@@ -83,13 +87,17 @@ func WrapperHandler(c *gin.Context) {
 	// Volta para o começo do arquivo antes de qualquer leitura/salvamento
 	_, err = file.Seek(0, io.SeekStart)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Error resetting file reading: %s", err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Error resetting file reading: %s", err.Error()),
+			"success": false,
+		})
 		return
 	}
 
 	if !isFileZip(buf) {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "File is not a valid zip",
+			"message": "File is not a valid zip",
+			"success": false,
 		})
 		return
 	}
@@ -104,7 +112,8 @@ func WrapperHandler(c *gin.Context) {
 	zipInputPath, err := saveTemporaryFile(fileHeader, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Error saving file",
+			"message": "Error saving file",
+			"success": false,
 		})
 		return
 	}
@@ -123,14 +132,19 @@ func WrapperHandler(c *gin.Context) {
 	if err != nil {
 		println("Error building application: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Error building application",
+			"message": "Error building application",
+			"success": false,
 		})
 		return
 	}
 
 	absOutputDir, err := filepath.Abs(OUTPUT_DIR)
 	if err != nil {
-		panic(err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Error getting absolute path: %s", err.Error()),
+			"success": false,
+		})
+		return
 	}
 
 	var execNameWithoutExtension string
@@ -144,7 +158,10 @@ func WrapperHandler(c *gin.Context) {
 	println("ZIP FILE PATH: ", zipFilePath)
 
 	if _, err := os.Stat(zipFilePath); os.IsNotExist(err) {
-		c.String(http.StatusNotFound, "File not found")
+		c.JSON(http.StatusNotFound, gin.H{
+			"message": "File not found",
+			"success": false,
+		})
 		return
 	}
 
@@ -181,6 +198,7 @@ func WrapperHandler(c *gin.Context) {
 	downloadURL := fmt.Sprintf("/download/%s", fileID)
 
 	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
 		"message":      "Application wrapped successfully",
 		"download_url": downloadURL,
 	})
@@ -195,14 +213,16 @@ func DownloadHandler(c *gin.Context) {
 
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error": "File not found or expired",
+			"message": "File not found or expired",
+			"success": false,
 		})
 		return
 	}
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Physical file not found",
+			"message": "Physical file not found",
+			"success": false,
 		})
 		return
 	}
@@ -237,7 +257,6 @@ func saveTemporaryFile(file *multipart.FileHeader, c *gin.Context) (string, erro
 
 	// Salva o arquivo
 	if err := c.SaveUploadedFile(file, savePath); err != nil {
-		c.String(http.StatusInternalServerError, "Falha ao salvar arquivo: %s", err.Error())
 		return "", err
 	}
 
@@ -245,7 +264,6 @@ func saveTemporaryFile(file *multipart.FileHeader, c *gin.Context) (string, erro
 	absPath, err := filepath.Abs(savePath)
 
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Erro ao obter caminho absoluto: %s", err.Error())
 		return "", err
 	}
 
