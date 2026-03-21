@@ -54,9 +54,15 @@ func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
 	functions += "	Data    []string `json:\"data,omitempty\"`\n"
 	functions += "}\n"
 
+	functions += "type RpcResponseResult struct {\n"
+	functions += "	Status     string `json:\"status\"`\n"
+	functions += "	WalletUsed string `json:\"walletUsed\"`\n"
+	functions += "	HasItem    bool   `json:\"hasItem\"`\n"
+	functions += "}\n"
+
 	functions += "type RpcResponse struct {\n"
 	functions += "	Jsonrpc string    `json:\"jsonrpc\"`\n"
-	functions += "	Result  string    `json:\"result,omitempty\"`\n"
+	functions += "	Result  RpcResponseResult `json:\"result,omitempty\"`\n"
 	functions += "	Error   *RpcError `json:\"error,omitempty\"`\n"
 	functions += "	Id      string    `json:\"id\"`\n"
 	functions += "}\n"
@@ -126,7 +132,7 @@ func (w *WrapperTemplateBuilder) BuildTemplate() (string, error) {
 
 	functions += "	var isValidAccess bool\n"
 
-	functions += "	if rpcResp.Result == \"true\" {\n"
+	functions += "	if rpcResp.Result.HasItem {\n"
 	functions += "		isValidAccess = true\n"
 	functions += "	} else {\n"
 	functions += "		isValidAccess = false\n"
